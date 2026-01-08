@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smooth Video Scroll - GSAP</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* The container that holds the video and pins it */
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        video {
+            /* Make video cover the screen */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            min-width: 100%;
+            min-height: 100%;
+            object-fit: cover;
+            /* Important for performance */
+            /* will-change: contents; */
+        }
+
+        /* 
+           This is the "Scroll Track" - the height of this determines 
+           how long you have to scroll to finish the video.
+           We will set this dynamically or you can set a fixed height here.
+            GSAP will pin the .video-container inside this track.
+        */
+
+        /* Overlays for demo purposes */
+        .overlay-text {
+            position: relative;
+            z-index: 10;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            /* Allow clicks to pass through to tests if needed */
+            pointer-events: none;
+            mix-blend-mode: difference;
+            /* Makes text visible on any background */
+        }
+
+        h1 {
+            font-size: 5rem;
+            text-transform: uppercase;
+            letter-spacing: -2px;
+            font-weight: 800;
+            opacity: 0;
+            /* Animated in by GSAP */
+            transform: translateY(50px);
+        }
+
+        p {
+            font-size: 1.5rem;
+            margin-top: 20px;
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        .scroll-indicator {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.9rem;
+            opacity: 0.7;
+            animation: bounce 2s infinite;
+            z-index: 20;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            100% {
+                transform: translate(-50%, 0);
+            }
+
+            50% {
+                transform: translate(-50%, 10px);
+            }
+        }
+
+        /* Extra content below to show normal scrolling resumes */
+        .content-section {
+            height: 100vh;
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-top: 1px solid #333;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 
+      HOW TO USE YOUR OWN VIDEO:
+      1. Replace the 'src' below with your video file path (e.g., 'my-video.mp4').
+      2. FOR BEST RESULTS (NO LAG): 
+         Encode your video with "Keyframes every 1 frame" (GOP=1). 
+         Standard MP4s have keyframes every 30-60 frames, which causes the specific "jittery" lag when scrubbing.
+         You can use tools like Handbrake or ffmpeg to re-encode:
+         ffmpeg -i input.mp4 -movflags faststart -vcodec libx264 -crf 23 -g 1 -pix_fmt yuv420p output.mp4
+    -->
+
+    <div class="video-container" id="video-wrapper">
+        <!-- Using a high-quality stock video for demo purposes -->
+        <video id="scroll-video"
+            src="teaser.mp4" muted playsinline
+            preload="auto"></video>
+    </div>
+
+    <!-- These text sections will be synced with the video scroll -->
+    <!-- The JavaScript below virtually creates the scroll distance -->
+
+    <div class="overlay-text" id="slide-1">
+        <h1>Scroll Control</h1>
+        <p>This video is controlled by your scrollbar.</p>
+    </div>
+
+    <div class="overlay-text" id="slide-2">
+        <h1>Zero Lag</h1>
+        <p>GSAP syncs the timeframe perfectly.</p>
+    </div>
+
+    <div class="overlay-text" id="slide-3">
+        <h1>Cinematic</h1>
+        <p>Bring your web experience to life.</p>
+    </div>
+
+    <div class="content-section">
+        <h1>Standard Content Resumes Here</h1>
+    </div>
+
+    <div class="scroll-indicator">Scroll Down ↓</div>
+
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        const video = document.querySelector("#scroll-video");
+        const videoContainer = document.querySelector("#video-wrapper");
+
+        // Wait for video metadata to load so we know the duration
+        video.onloadedmetadata = function () {
+            const videoDuration = video.duration;
+
+            // Optional: smoother scrolling for the video time updates
+            // We use a proxy object to tween the value, then apply it to the video
+            let videoPlayhead = { frame: 0 };
+
+            // Create a timeline that pins the video container
+            // The 'end' value controls how "long" the scroll is (e.g., 400% of viewport height)
+            let tl = gsap.timeline({
+                scrollTrigger: {
+                    trigger: ".video-container",
+                    start: "top top",
+                    end: "+=400%", // 4 screens worth of scrolling
+                    pin: true,     // Pin the video while scrolling
+                    scrub: 1,      // 1 second smoothing (adjust for responsiveness vs smoothness)
+                    // markers: true // Uncomment for debug markers
+                }
+            });
+
+            // Add the video scrub animation to the timeline
+            tl.to(video, {
+                currentTime: videoDuration,
+                ease: "none" // Linear scrub
+            });
+
+            // ANIMATE TEXT:
+            // We can sequence text animations alongside the video frames
+
+            // Slide 1: Fade out quickly
+            gsap.to("#slide-1", {
+                scrollTrigger: {
+                    trigger: ".video-container",
+                    start: "top top",
+                    end: "+=50%",
+                    scrub: true
+                },
+                opacity: 0,
+                y: -50
+            });
+
+            // Slide 2: Fade in then out
+            let slide2 = gsap.timeline({
+                scrollTrigger: {
+                    trigger: ".video-container",
+                    start: "20% top", // Start a bit later
+                    end: "60% top",
+                    scrub: true
+                }
+            });
+            slide2.to("#slide-2", { opacity: 1, y: 0, duration: 1 }) // In
+                .to("#slide-2", { opacity: 0, y: -50, duration: 1 }, "+=0.5"); // Out
+
+            // Slide 3: Fade in
+            let slide3 = gsap.timeline({
+                scrollTrigger: {
+                    trigger: ".video-container",
+                    start: "60% top",
+                    end: "90% top",
+                    scrub: true
+                }
+            });
+            slide3.to("#slide-3", { opacity: 1, y: 0, duration: 1 });
+
+            // Ensure first text is visible
+            gsap.set("#slide-1", { opacity: 1, y: 0 });
+        };
+
+        // Fallback if metadata is already loaded (cached)
+        if (video.readyState >= 1) {
+            video.onloadedmetadata();
+        }
+
+        // --- OPTIONAL: BLOB OPTIMIZATION FOR LAG REDUCTION ---
+        // If your video is large, fetching it as a blob can sometimes help with seeking performance
+        // depending on the browser.
+        /*
+        fetch(video.src)
+        .then(response => response.blob())
+        .then(blob => {
+            let blobUrl = URL.createObjectURL(blob);
+            video.src = blobUrl;
+        });
+        */
+    </script>
+</body>
+
+</html>
