@@ -183,10 +183,11 @@
                 scrollTrigger: {
                     trigger: ".video-container",
                     start: "top top",
-                    end: "+=400%", // 4 screens worth of scrolling
-                    pin: true,     // Pin the video while scrolling
-                    scrub: 1,      // 1 second smoothing (adjust for responsiveness vs smoothness)
-                    // markers: true // Uncomment for debug markers
+                    // INCREASE THIS VALUE to make the video play SLOWER.
+                    // +=400% means 4 screens tall. +=1000% means 10 screens tall (much slower).
+                    end: "+=1000%",
+                    pin: true,
+                    scrub: 1.5,      // Slightly increased smoothing for a "weightier" feel
                 }
             });
 
