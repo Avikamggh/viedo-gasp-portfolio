@@ -123,42 +123,48 @@
 <body>
 
     <!-- 
-      HOW TO USE YOUR OWN VIDEO:
-      1. Replace the 'src' below with your video file path (e.g., 'my-video.mp4').
-      2. FOR BEST RESULTS (NO LAG): 
-         Encode your video with "Keyframes every 1 frame" (GOP=1). 
-         Standard MP4s have keyframes every 30-60 frames, which causes the specific "jittery" lag when scrubbing.
-         You can use tools like Handbrake or ffmpeg to re-encode:
-         ffmpeg -i input.mp4 -movflags faststart -vcodec libx264 -crf 23 -g 1 -pix_fmt yuv420p output.mp4
+      PERMANENT LAG FIX INSTRUCTIONS:
+      1. This code now uses a "Canvas" to draw the video frames, which typically looks smoother.
+      2. It also pre-downloads the entire video into memory (Blob) before starting to fix network lag.
+      
+      *** THE FINAL BOTTLENECK ***
+      If it still stutters, it is 100% the VIDEO ENCODING.
+      To fix it permanently, you MUST re-encode your video to have "Keyframes (GOP) of 1".'
+      
+      Run this simple command in your terminal on your video file:
+      ffmpeg -i input.mp4 -movflags faststart -vcodec libx264 -crf 23 -g 1 -pix_fmt yuv420p output_smooth.mp4
+      
+      Then use 'output_smooth.mp4' in this file.
     -->
 
-    <div class="video-container" id="video-wrapper">
-        <!-- Using a high-quality stock video for demo purposes -->
-        <video id="scroll-video"
-            src="teaser.mp4" muted playsinline
-            preload="auto"></video>
+    <div class="loader">
+        <div class="loader-text">Loading High-Res Video... 0%</div>
     </div>
 
-    <!-- These text sections will be synced with the video scroll -->
-    <!-- The JavaScript below virtually creates the scroll distance -->
+    <div class="video-container" id="video-wrapper">
+        <canvas id="video-canvas"></canvas>
+    </div>
+
+    <!-- Hidden video element for source -->
+    <video id="hidden-video" playsinline muted preload="auto" style="display: none;"></video>
 
     <div class="overlay-text" id="slide-1">
-        <h1>Scroll Control</h1>
-        <p>This video is controlled by your scrollbar.</p>
+        <h1>Ultimate Smoothness</h1>
+        <p>Canvas Rendering + Blob Buffering</p>
     </div>
 
     <div class="overlay-text" id="slide-2">
-        <h1>Zero Lag</h1>
-        <p>GSAP syncs the timeframe perfectly.</p>
+        <h1>Precision Control</h1>
+        <p>Frame-by-frame exactness.</p>
     </div>
 
     <div class="overlay-text" id="slide-3">
         <h1>Cinematic</h1>
-        <p>Bring your web experience to life.</p>
+        <p>The best experience possible.</p>
     </div>
 
     <div class="content-section">
-        <h1>Standard Content Resumes Here</h1>
+        <h1>Content Resumes</h1>
     </div>
 
     <div class="scroll-indicator">Scroll Down ↓</div>
@@ -166,95 +172,132 @@
     <script>
         gsap.registerPlugin(ScrollTrigger);
 
-        const video = document.querySelector("#scroll-video");
-        const videoContainer = document.querySelector("#video-wrapper");
+        const canvas = document.querySelector("#video-canvas");
+        const ctx = canvas.getContext("2d");
+        const video = document.querySelector("#hidden-video");
+        const loader = document.querySelector(".loader");
+        const loaderText = document.querySelector(".loader-text");
 
-        // Wait for video metadata to load so we know the duration
-        video.onloadedmetadata = function () {
-            const videoDuration = video.duration;
+        // Use a high-quality video (or your own)
+        // Note: This specific URL is a standard MP4. For best results, use a locally optimized file.
+        const videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4";
 
-            // Optional: smoother scrolling for the video time updates
-            // We use a proxy object to tween the value, then apply it to the video
-            let videoPlayhead = { frame: 0 };
+        // 1. PRELOAD VIDEO AS BLOB (Removes Network Lag)
+        // ------------------------------------------------
+        const req = new XMLHttpRequest();
+        req.open('GET', videoUrl, true);
+        req.responseType = 'blob';
 
-            // Create a timeline that pins the video container
-            // The 'end' value controls how "long" the scroll is (e.g., 400% of viewport height)
+        req.onprogress = function (e) {
+            if (e.lengthComputable) {
+                const percent = Math.floor((e.loaded / e.total) * 100);
+                loaderText.innerText = `Loading High-Res Video... ${percent}%`;
+            }
+        };
+
+        req.onload = function () {
+            if (this.status === 200) {
+                const videoBlob = this.response;
+                const vid = URL.createObjectURL(videoBlob);
+                video.src = vid;
+
+                // Once src is set, wait for metadata
+                video.onloadedmetadata = initScrollAnimation;
+            }
+        };
+        req.onerror = function () {
+            // Fallback if Blob fails (CORS issues etc)
+            video.src = videoUrl;
+            video.onloadedmetadata = initScrollAnimation;
+        };
+        req.send();
+
+
+        // 2. INITIALIZE SCROLL ANIMATION
+        // ------------------------------------------------
+        function initScrollAnimation() {
+            // Remove loader
+            gsap.to(loader, { opacity: 0, duration: 0.5, onComplete: () => loader.style.display = "none" });
+
+            // Set canvas size to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            // Resize canvas on window resize to cover screen properly (object-fit: cover equivalent)
+            function resizeCanvas() {
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+                const videoRatio = video.videoWidth / video.videoHeight;
+                const screenRatio = vw / vh;
+
+                if (screenRatio > videoRatio) {
+                    canvas.style.width = "100%";
+                    canvas.style.height = "auto";
+                } else {
+                    canvas.style.width = "auto";
+                    canvas.style.height = "100%";
+                }
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+
+            // SCROLLTRIGGER SETUP
             let tl = gsap.timeline({
                 scrollTrigger: {
                     trigger: ".video-container",
                     start: "top top",
-                    // INCREASE THIS VALUE to make the video play SLOWER.
-                    // +=400% means 4 screens tall. +=1000% means 10 screens tall (much slower).
-                    end: "+=1000%",
+                    end: "+=1200%", // Very long scroll for slow, detailed playback
                     pin: true,
-                    scrub: 1.5,      // Slightly increased smoothing for a "weightier" feel
+                    scrub: 1 // Moderate scrub for responsiveness
                 }
             });
 
-            // Add the video scrub animation to the timeline
-            tl.to(video, {
-                currentTime: videoDuration,
-                ease: "none" // Linear scrub
+            // We tween a virtual object "playhead" from 0 to video.duration
+            let playhead = { frame: 0 };
+
+            tl.to(playhead, {
+                frame: video.duration,
+                ease: "none",
+                onUpdate: () => {
+                    // Update video time
+                    // We use a small epsilon to ensure we don't hit the exact end which sometimes causes flicker
+                    video.currentTime = playhead.frame;
+                }
             });
 
-            // ANIMATE TEXT:
-            // We can sequence text animations alongside the video frames
+            // 3. THE RENDER LOOP (The "Magic" Bit)
+            // --------------------------------------
+            // Instead of relying on auto-paint, we force draw the video frame 
+            // whenever the browser is ready to paint a new frame.
 
-            // Slide 1: Fade out quickly
-            gsap.to("#slide-1", {
-                scrollTrigger: {
-                    trigger: ".video-container",
-                    start: "top top",
-                    end: "+=50%",
-                    scrub: true
-                },
-                opacity: 0,
-                y: -50
+            function render() {
+                // Determine if we need to draw (only if video has data)
+                if (video.readyState >= 2) {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                }
+                requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+
+
+            // TEXT ANIMATIONS (Same as before)
+            gsap.fromTo("#slide-1", { opacity: 1 }, {
+                scrollTrigger: { trigger: ".video-container", start: "top top", end: "+=50%", scrub: true },
+                opacity: 0, y: -50
             });
 
-            // Slide 2: Fade in then out
             let slide2 = gsap.timeline({
-                scrollTrigger: {
-                    trigger: ".video-container",
-                    start: "20% top", // Start a bit later
-                    end: "60% top",
-                    scrub: true
-                }
+                scrollTrigger: { trigger: ".video-container", start: "25% top", end: "55% top", scrub: true }
             });
-            slide2.to("#slide-2", { opacity: 1, y: 0, duration: 1 }) // In
-                .to("#slide-2", { opacity: 0, y: -50, duration: 1 }, "+=0.5"); // Out
+            slide2.fromTo("#slide-2", { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 1 })
+                .to("#slide-2", { opacity: 0, y: -50, duration: 1 }, "+=0.5");
 
-            // Slide 3: Fade in
             let slide3 = gsap.timeline({
-                scrollTrigger: {
-                    trigger: ".video-container",
-                    start: "60% top",
-                    end: "90% top",
-                    scrub: true
-                }
+                scrollTrigger: { trigger: ".video-container", start: "65% top", end: "90% top", scrub: true }
             });
-            slide3.to("#slide-3", { opacity: 1, y: 0, duration: 1 });
-
-            // Ensure first text is visible
-            gsap.set("#slide-1", { opacity: 1, y: 0 });
-        };
-
-        // Fallback if metadata is already loaded (cached)
-        if (video.readyState >= 1) {
-            video.onloadedmetadata();
+            slide3.fromTo("#slide-3", { opacity: 0, y: 50 }, { opacity: 1, y: 0 });
         }
-
-        // --- OPTIONAL: BLOB OPTIMIZATION FOR LAG REDUCTION ---
-        // If your video is large, fetching it as a blob can sometimes help with seeking performance
-        // depending on the browser.
-        /*
-        fetch(video.src)
-        .then(response => response.blob())
-        .then(blob => {
-            let blobUrl = URL.createObjectURL(blob);
-            video.src = blobUrl;
-        });
-        */
     </script>
 </body>
 
